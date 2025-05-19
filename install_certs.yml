@@ -1,0 +1,61 @@
+# Playbook: install_certs.yml
+# Автоматизация загрузки и применения сертификатов на S-Terra
+
+- name: Install certificates on S-Terra devices
+  hosts: all
+  gather_facts: no
+  connection: ssh
+  become: yes
+
+  vars:
+    # Определение даты для папки с сертификатами
+    cert_date: "{{ lookup('pipe', 'date +%Y%m%d') }}"
+    # Путь на устройстве для временного хранения сертификатов
+    cert_tmp_dir: "/certs_{{ cert_date }}/{{ inventory_hostname }}"
+
+  pre_tasks:
+    - name: Remove existing certificates from product database
+      ansible.builtin.shell: |
+        for idx in $(cert_mgr show | awk '/^[0-9]+ / {print $1}'); do
+          cert_mgr remove -i $idx
+        done
+      ignore_errors: true
+      tags: certs
+
+    - name: Create certificate directory on device
+      ansible.builtin.file:
+        path: "{{ cert_tmp_dir }}"
+        state: directory
+        mode: '0755'
+      tags: certs
+
+  tasks:
+    - name: Copy CA certificate to device
+      ansible.builtin.copy:
+        src: "{{ ca_cert_path }}"
+        dest: "{{ cert_tmp_dir }}/ca_cert.pem"
+        mode: '0644'
+      tags: certs
+
+    - name: Copy Unit certificate to device
+      ansible.builtin.copy:
+        src: "{{ unit_cert_path }}"
+        dest: "{{ cert_tmp_dir }}/unit_cert.pem"
+        mode: '0644'
+      tags: certs
+
+    - name: Import CA certificate
+      ansible.builtin.command:
+        cmd: cert_mgr import -t -f "{{ cert_tmp_dir }}/ca_cert.pem"
+      tags: certs
+
+    - name: Import Unit certificate
+      ansible.builtin.command:
+        cmd: cert_mgr import -f "{{ cert_tmp_dir }}/unit_cert.pem"
+      tags: certs
+
+    - name: Clean up certificate directory
+      ansible.builtin.file:
+        path: "{{ cert_tmp_dir }}"
+        state: absent
+      tags: certs

@@ -1,0 +1,56 @@
+enable
+csp
+configure terminal
+
+crypto ipsec df-bit clear
+crypto isakmp identity dn
+crypto isakmp fragmentation
+crypto ipsec security-association lifetime seconds 86400
+crypto ipsec security-association lifetime kilobytes 4294967295
+crypto isakmp keepalive 3 3
+crypto isakmp keepalive retry-count 3
+
+hostname {{ inventory_hostname }}
+
+enable secret csp
+
+crypto isakmp policy 10
+ encr gost341215k
+ hash gost341112-256-tc26
+ authentication gost-sig
+ group vko2
+
+crypto ipsec transform-set GOST esp-gost341215k-mgm
+
+object-group network self
+ description IP on WAN interface
+ host {{ hostvars[inventory_hostname].primary_ip4 }}
+
+object-group network multicast
+ host 224.0.0.5
+ host 224.0.0.6
+ host 224.0.0.18
+
+ip access-list extended IPSEC_DMVPN
+ deny   icmp object-group self any
+ deny   udp object-group self any
+ deny   tcp object-group self any
+ deny   ip object-group self object-group multicast
+ remark special DMVPN filter
+ permit ip object-group self any
+
+crypto dynamic-map DMAP 1
+ match address IPSEC_DMVPN
+ set transform-set GOST
+ set dead-connection history off
+
+crypto map VPN 1 ipsec-isakmp dynamic DMAP
+
+crypto pki trustpoint s-terra_technological_trustpoint
+ revocation-check none
+
+end
+write memory
+
+# Exit cs_console session
+auto exit

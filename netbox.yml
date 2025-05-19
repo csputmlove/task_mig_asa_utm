@@ -1,0 +1,13 @@
+plugin: netbox.netbox.nb_inventory
+api_endpoint: http://127.0.0.1:8001
+token: 2409b6e0991572a7991a1ab29e35685d582a2684
+validate_certs: false
+
+# Включаем сбор интерфейсов
+interfaces: yes
+services: no
+config_context: no
+
+#по ролям устройств и сайтам
+group_by:
+  - device_roles

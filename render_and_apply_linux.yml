@@ -1,0 +1,59 @@
+---
+# render_and_apply_linux.yml
+- name: Render Linux config for review
+  hosts: device_roles_crypto
+  gather_facts: no
+  connection: local
+
+  vars:
+    output_dir: "./rendered/{{ inventory_hostname }}"
+
+  pre_tasks:
+    - name: Ensure render directory exists on controller
+      file:
+        path: "{{ output_dir }}"
+        state: directory
+        mode: '0755'
+      delegate_to: localhost
+      tags: render-linux
+
+    - name: Render Linux configuration script
+      template:
+        src: templates/linux_tasks.j2
+        dest: "{{ output_dir }}/{{ inventory_hostname }}-linux.sh"
+      delegate_to: localhost
+      tags: render-linux
+
+    - name: Show rendered file path
+      debug:
+        msg: "Rendered Linux script saved at {{ output_dir }}/{{ inventory_hostname }}-linux.sh"
+      delegate_to: localhost
+      tags: render-linux
+
+  tasks:
+    - name: Pause for review of rendered Linux script
+      pause:
+        prompt: |
+          Please review the rendered Linux script at {{ output_dir }}/{{ inventory_hostname }}-linux.sh.
+          When ready to apply, rerun this playbook with --tags apply-linux
+      tags: render-linux
+
+- name: Apply Linux configuration on S-Terra
+  hosts: device_roles_crypto
+  gather_facts: no
+  connection: ssh
+  become: yes
+
+  tasks:
+    - name: Copy rendered Linux script to device
+      copy:
+        src: "{{ playbook_dir }}/rendered/{{ inventory_hostname }}/{{ inventory_hostname }}-linux.sh"
+        dest: "/tmp/{{ inventory_hostname }}-linux.sh"
+        mode: '0755'
+      tags: apply-linux
+
+    - name: Execute Linux configuration script on device
+      shell: "/tmp/{{ inventory_hostname }}-linux.sh"
+      args:
+        chdir: "/tmp"
+      tags: apply-linux

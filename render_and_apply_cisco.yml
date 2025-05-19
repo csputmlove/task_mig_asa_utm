@@ -1,0 +1,68 @@
+- name: Render and apply Cisco-like config via SSH cscons
+  hosts: all
+  gather_facts: no
+  connection: local
+
+  vars:
+    # Path to rendered config directory and file
+    output_dir: "{{ playbook_dir }}/rendered/{{ inventory_hostname }}"
+    config_file: "{{ output_dir }}/{{ inventory_hostname }}-cisco.cfg"
+
+    # SSH credentials and host
+    cs_user: cscons
+    cs_pass: "{{ lookup('env','CSP_PASSWORD') }}"
+    host_ip: "{{ hostvars[inventory_hostname].ansible_host }}"
+
+  tasks:
+    - name: Ensure local render directory exists
+      file:
+        path: "{{ output_dir }}"
+        state: directory
+        mode: '0755'
+      delegate_to: localhost
+      tags: render-cisco
+
+    - name: Render Cisco-like configuration
+      template:
+        src: templates/cisco_config.j2
+        dest: "{{ config_file }}"
+      delegate_to: localhost
+      tags: render-cisco
+
+    - name: Show rendered config path
+      debug:
+        msg: "Rendered Cisco config: {{ config_file }}"
+      delegate_to: localhost
+      tags: render-cisco
+
+    - name: Pause for manual review
+      pause:
+        prompt: |
+          Review the Cisco config at {{ config_file }}.
+          When ready, run this playbook with --tags apply-cisco
+      delegate_to: localhost
+      tags: render-cisco
+
+    - name: Apply Cisco config via direct SSH to cscons
+      shell: |
+        sshpass -p "{{ cs_pass }}" ssh -tt -o StrictHostKeyChecking=no \
+          {{ cs_user }}@{{ host_ip }} << 'EOF'
+        enable
+        csp
+        configure terminal
+        {{ lookup('file', config_file) }}
+        end
+        write memory
+        exit
+        EOF
+      delegate_to: localhost
+      register: console_out
+      no_log: false
+      tags: apply-cisco
+
+    - name: Show cscons console output on failure
+      debug:
+        var: console_out.stdout_lines
+      when: console_out.rc != 0
+      delegate_to: localhost
+      tags: apply-cisco
